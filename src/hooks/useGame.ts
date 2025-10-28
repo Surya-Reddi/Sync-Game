@@ -300,7 +300,7 @@ export const submitChoice = async (gameId: string, playerId: string, choice: str
     }
 
     setTimeout(async () => {
-      if (game.current_round < 10) {
+      if (game.current_round < 5) {
         const nextRound = game.current_round + 1;
         await supabase
           .from('games')

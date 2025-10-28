@@ -51,7 +51,7 @@ export const WelcomeScreen = ({ onCreateGame, onJoinGame }: WelcomeScreenProps) 
             </div>
 
             <h1 className="text-6xl font-bold text-white mb-4 tracking-tight animate-bounce-in">
-              Mind Meld
+              Let's Sync
             </h1>
 
             <p className="text-xl text-white/90 mb-12 animate-slide-up" style={{ animationDelay: '0.2s' }}>
@@ -91,7 +91,7 @@ export const WelcomeScreen = ({ onCreateGame, onJoinGame }: WelcomeScreenProps) 
             <div className="space-y-4">
               <div>
                 <label className="block text-white/90 text-sm font-semibold mb-2">
-                  Your Name
+                  Your Sweet Name
                 </label>
                 <input
                   type="text"

@@ -38,7 +38,7 @@ export const GamePlay = ({
       setShowResult(true);
       if (currentRound.is_match) {
         setShowConfetti(true);
-        setTimeout(() => setShowConfetti(false), 3000);
+        setTimeout(() => setShowConfetti(false), 5000);
       }
     } else {
       setShowResult(false);
@@ -122,10 +122,10 @@ export const GamePlay = ({
             >
               <p
                 className={`text-3xl font-bold ${
-                  currentRound.is_match ? 'text-green-300' : 'text-white/70'
+                  currentRound.is_match ? 'text-blue-900' : 'text-white/70'
                 }`}
               >
-                {currentRound.is_match ? 'PERFECT MATCH!' : 'Not this time...'}
+                {currentRound.is_match ? 'PERFECT MATCH!' : 'Uh Ohh...'}
               </p>
               <p className="text-white/80 mt-2">
                 Player 1: {currentRound.player1_choice} | Player 2:{' '}
@@ -174,7 +174,7 @@ export const GamePlay = ({
                 transform transition-all duration-300 hover:scale-105 hover:shadow-2xl
                 active:scale-95 ring-2 ring-white/50"
             >
-              Lock In Choice
+              Submit
             </button>
           </div>
         )}
