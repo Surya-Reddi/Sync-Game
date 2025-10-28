@@ -14,63 +14,154 @@ export const useGame = (gameId: string | null) => {
       return;
     }
 
+    let isSubscribed = true;
+
     const fetchGameData = async () => {
-      const { data: gameData } = await supabase
-        .from('games')
-        .select('*')
-        .eq('id', gameId)
-        .maybeSingle();
-
-      if (gameData) {
-        setGame(gameData);
-
-        const { data: playersData } = await supabase
-          .from('players')
+      try {
+        // Fetch game data
+        const { data: gameData, error: gameError } = await supabase
+          .from('games')
           .select('*')
-          .eq('game_id', gameId)
-          .order('player_number');
+          .eq('id', gameId)
+          .single();
 
-        setPlayers(playersData || []);
+        if (gameError) {
+          console.error('Error fetching game:', gameError);
+          setLoading(false);
+          return;
+        }
 
-        if (gameData.current_round > 0) {
-          const { data: roundData } = await supabase
-            .from('rounds')
+        if (isSubscribed && gameData) {
+          setGame(gameData);
+
+          // Fetch players
+          const { data: playersData, error: playersError } = await supabase
+            .from('players')
             .select('*')
             .eq('game_id', gameId)
-            .eq('round_number', gameData.current_round)
-            .maybeSingle();
+            .order('player_number');
 
-          setCurrentRound(roundData);
+          if (playersError) {
+            console.error('Error fetching players:', playersError);
+          } else if (isSubscribed) {
+            setPlayers(playersData || []);
+          }
+
+          // Fetch current round if game is playing
+          if (gameData.current_round > 0) {
+            const { data: roundData, error: roundError } = await supabase
+              .from('rounds')
+              .select('*')
+              .eq('game_id', gameId)
+              .eq('round_number', gameData.current_round)
+              .single();
+
+            if (roundError) {
+              console.error('Error fetching round:', roundError);
+            } else if (isSubscribed) {
+              setCurrentRound(roundData);
+            }
+          }
+        }
+
+        if (isSubscribed) {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Error in fetchGameData:', error);
+        if (isSubscribed) {
+          setLoading(false);
         }
       }
-
-      setLoading(false);
     };
 
     fetchGameData();
 
+    // Set up real-time subscriptions
     const gameChannel = supabase
-      .channel(`game:${gameId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'games', filter: `id=eq.${gameId}` }, (payload) => {
-        setGame(payload.new as Game);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameId}` }, () => {
-        supabase
-          .from('players')
-          .select('*')
-          .eq('game_id', gameId)
-          .order('player_number')
-          .then(({ data }) => setPlayers(data || []));
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'rounds', filter: `game_id=eq.${gameId}` }, (payload) => {
-        const round = payload.new as Round;
-        if (game && round.round_number === game.current_round) {
-          setCurrentRound(round);
+      .channel(`game-${gameId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'games',
+          filter: `id=eq.${gameId}`
+        },
+        (payload) => {
+          console.log('Game update:', payload);
+          if (payload.new && isSubscribed) {
+            setGame(payload.new as Game);
+            
+            // Fetch current round when game updates
+            const newGame = payload.new as Game;
+            if (newGame.current_round > 0) {
+              supabase
+                .from('rounds')
+                .select('*')
+                .eq('game_id', gameId)
+                .eq('round_number', newGame.current_round)
+                .single()
+                .then(({ data }) => {
+                  if (data && isSubscribed) {
+                    setCurrentRound(data);
+                  }
+                });
+            }
+          }
         }
-      })
-      .subscribe();
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'players',
+          filter: `game_id=eq.${gameId}`
+        },
+        () => {
+          console.log('Players update');
+          // Refetch all players when any player changes
+          supabase
+            .from('players')
+            .select('*')
+            .eq('game_id', gameId)
+            .order('player_number')
+            .then(({ data }) => {
+              if (data && isSubscribed) {
+                setPlayers(data);
+              }
+            });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'rounds',
+          filter: `game_id=eq.${gameId}`
+        },
+        (payload) => {
+          console.log('Round update:', payload);
+          if (payload.new && isSubscribed) {
+            const round = payload.new as Round;
+            // Only update if it's the current round
+            setCurrentRound((prev) => {
+              if (!prev || round.round_number === prev.round_number) {
+                return round;
+              }
+              return prev;
+            });
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('Subscription status:', status);
+      });
 
     return () => {
+      isSubscribed = false;
       gameChannel.unsubscribe();
     };
   }, [gameId]);
@@ -109,7 +200,7 @@ export const joinGame = async (roomCode: string, playerName: string): Promise<{ 
     .from('games')
     .select('*')
     .eq('room_code', roomCode.toUpperCase())
-    .maybeSingle();
+    .single();
 
   if (gameError || !gameData) {
     throw new Error('Game not found');
@@ -134,6 +225,7 @@ export const joinGame = async (roomCode: string, playerName: string): Promise<{ 
     throw new Error('Failed to join game');
   }
 
+  // Update game status to playing and start first round
   await supabase
     .from('games')
     .update({ status: 'playing', current_round: 1, updated_at: new Date().toISOString() })
@@ -156,7 +248,7 @@ export const submitChoice = async (gameId: string, playerId: string, choice: str
     .from('players')
     .select('*')
     .eq('id', playerId)
-    .maybeSingle();
+    .single();
 
   if (!player) throw new Error('Player not found');
 
@@ -164,7 +256,7 @@ export const submitChoice = async (gameId: string, playerId: string, choice: str
     .from('games')
     .select('*')
     .eq('id', gameId)
-    .maybeSingle();
+    .single();
 
   if (!game) throw new Error('Game not found');
 
@@ -181,7 +273,7 @@ export const submitChoice = async (gameId: string, playerId: string, choice: str
     .select('*')
     .eq('game_id', gameId)
     .eq('round_number', game.current_round)
-    .maybeSingle();
+    .single();
 
   if (updatedRound && updatedRound.player1_choice && updatedRound.player2_choice) {
     const isMatch = updatedRound.player1_choice === updatedRound.player2_choice;

@@ -1,20 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { GameLobby } from './components/GameLobby';
 import { GamePlay } from './components/GamePlay';
 import { Results } from './components/Results';
 import { useGame, createGame, joinGame, submitChoice } from './hooks/useGame';
-
-import { supabase } from './supabaseClient';
-
-// Add this temporarily to test connection
-console.log('Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
-console.log('Supabase Key exists:', !!import.meta.env.VITE_SUPABASE_ANON_KEY);
-
-// Test the connection
-supabase.from('games').select('count').then(result => {
-  console.log('Supabase connection test:', result);
-});
 
 type GameState = 'welcome' | 'lobby' | 'playing' | 'finished';
 
@@ -23,8 +12,39 @@ function App() {
   const [gameId, setGameId] = useState<string | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [roomCode, setRoomCode] = useState<string>('');
-
   const { game, players, currentRound, loading } = useGame(gameId);
+
+// Add this temporarily
+console.log('Debug:', { 
+  gameState, 
+  gameStatus: game?.status, 
+  playersCount: players.length,
+  hasCurrentRound: !!currentRound,
+  gameId,
+  playerId 
+});
+
+  // Handle game state transitions based on game status
+  useEffect(() => {
+    if (!game) return;
+
+    // Only transition to playing if we're in lobby and game status is playing
+    if (game.status === 'playing' && gameState === 'lobby') {
+      // Small delay to allow smooth transition
+      const timer = setTimeout(() => {
+        setGameState('playing');
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+
+    // Transition to finished when game is complete
+    if (game.status === 'finished' && gameState === 'playing') {
+      const timer = setTimeout(() => {
+        setGameState('finished');
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [game?.status, gameState]);
 
   const handleCreateGame = async (name: string) => {
     try {
@@ -78,14 +98,6 @@ function App() {
     );
   }
 
-  if (game?.status === 'playing' && gameState === 'lobby') {
-    setGameState('playing');
-  }
-
-  if (game?.status === 'finished' && gameState === 'playing') {
-    setGameState('finished');
-  }
-
   return (
     <div className="min-h-screen">
       {gameState === 'welcome' && (
@@ -94,7 +106,7 @@ function App() {
           onJoinGame={handleJoinGame}
         />
       )}
-
+      
       {gameState === 'lobby' && playerId && (
         <GameLobby
           roomCode={roomCode}
@@ -102,8 +114,8 @@ function App() {
           currentPlayerId={playerId}
         />
       )}
-
-      {gameState === 'playing' && gameId && playerId && (
+      
+      {gameState === 'playing' && gameId && playerId && game && currentRound && (
         <GamePlay
           gameId={gameId}
           players={players}
@@ -112,7 +124,7 @@ function App() {
           onSubmitChoice={handleSubmitChoice}
         />
       )}
-
+      
       {gameState === 'finished' && (
         <Results players={players} onPlayAgain={handlePlayAgain} />
       )}
